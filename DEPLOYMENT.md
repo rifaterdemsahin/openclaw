@@ -117,10 +117,16 @@ node_modules
 
 2. **Set the secret via Fly CLI**:
    ```bash
-   flyctl secrets set OPENCLAW_GATEWAY_TOKEN=<token> --app openclaw-fly-lhr-20260512
+   flyctl secrets set OPENCLAW_GATEWAY_TOKEN=2925431dcf1cc9fb2588cb716d7ed603e39d960a1353514e72dab68405651f5e --app openclaw-fly-lhr-20260512
    ```
 
-3. **Confirmed secrets are staged** for the first deployment.
+3. **Saved the token to Azure Key Vault** (`openshifthelper`):
+   ```powershell
+   $SecureString = ConvertTo-SecureString -String "2925431dcf1cc9fb2588cb716d7ed603e39d960a1353514e72dab68405651f5e" -AsPlainText -Force
+   Set-AzKeyVaultSecret -VaultName openshifthelper -Name "OpenClawGatewayToken" -SecretValue $SecureString
+   ```
+
+4. **Confirmed secrets are staged** for the first deployment.
 
 > **Note:** The gateway refuses to start if authentication is missing when binding to a non-loopback address. Setting `OPENCLAW_GATEWAY_TOKEN` satisfies this requirement.
 
@@ -207,7 +213,7 @@ Key log lines observed:
 | **Image** | `ghcr.io/openclaw/openclaw:latest` |
 | **VM** | `shared-cpu-2x` / 2048 MB RAM |
 | **Volume** | `openclaw_data` (1 GB, encrypted) |
-| **Gateway Token** | `5bc09e4931552e23db970e79b0a497ad66118598bff4443e70b5491b2882e8eb` |
+| **Gateway Token** | `2925431dcf1cc9fb2588cb716d7ed603e39d960a1353514e72dab68405651f5e` |
 
 ---
 
@@ -215,6 +221,43 @@ Key log lines observed:
 
 ### Open the Control UI
 Visit `https://openclaw-fly-lhr-20260512.fly.dev` and paste the **Gateway Token** into Settings.
+
+> **If you see "origin not allowed"**: The Fly.io public URL must be added to `gateway.controlUi.allowedOrigins`. This was fixed by updating `/data/openclaw.json` on the running machine:
+> ```bash
+> # Upload and run a small Node.js script to update the config
+> flyctl ssh sftp put --app openclaw-fly-lhr-20260512 update-origins.js /tmp/update-origins.js
+> flyctl ssh console --app openclaw-fly-lhr-20260512 --command "node /tmp/update-origins.js"
+> flyctl apps restart openclaw-fly-lhr-20260512
+> ```
+> The allowed origins now include:
+> - `http://localhost:3000`
+> - `http://127.0.0.1:3000`
+> - `https://openclaw-fly-lhr-20260512.fly.dev`
+
+### Secret Management (Azure Key Vault)
+
+The Gateway Token has been saved to the following Key Vaults:
+
+| Vault | Subscription | Status |
+|-------|-------------|--------|
+| `openshifthelper` | Azure DevTest subscription 1 | ✅ Saved as `OpenClawGatewayToken` |
+| `dp-kv-deliverypilot` | deliverypilot-rg | ⏳ Requires manual save (MFA tenant) |
+
+#### Save to `dp-kv-deliverypilot` manually
+Because this subscription requires MFA against tenant `de4adc2e-4d6f-4aab-b150-67c369a12924`, you must run the command in your own terminal where you are already authenticated:
+
+**Azure CLI:**
+```bash
+az account set --subscription b85b029d-9f7c-4c5a-8939-819480780c5d
+az keyvault secret set --vault-name dp-kv-deliverypilot --name OpenClawGatewayToken --value 2925431dcf1cc9fb2588cb716d7ed603e39d960a1353514e72dab68405651f5e
+```
+
+**PowerShell:**
+```powershell
+Set-AzContext -Subscription b85b029d-9f7c-4c5a-8939-819480780c5d
+$SecureString = ConvertTo-SecureString -String "2925431dcf1cc9fb2588cb716d7ed603e39d960a1353514e72dab68405651f5e" -AsPlainText -Force
+Set-AzKeyVaultSecret -VaultName dp-kv-deliverypilot -Name "OpenClawGatewayToken" -SecretValue $SecureString
+```
 
 ### Add an AI Model Provider
 Set an API key (e.g., OpenAI) via secrets:
