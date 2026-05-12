@@ -115,14 +115,14 @@ node_modules
    $token = -join ((1..32) | ForEach-Object { "{0:x2}" -f (Get-Random -Maximum 256) })
    ```
 
-2. **Set the secret via Fly CLI**:
+2. **Set the secret via Fly CLI** (use the actual token from your Key Vault):
    ```bash
-   flyctl secrets set OPENCLAW_GATEWAY_TOKEN=2925431dcf1cc9fb2588cb716d7ed603e39d960a1353514e72dab68405651f5e --app openclaw-fly-lhr-20260512
+   flyctl secrets set OPENCLAW_GATEWAY_TOKEN=<TOKEN_FROM_KEY_VAULT> --app openclaw-fly-lhr-20260512
    ```
 
 3. **Saved the token to Azure Key Vault** (`openshifthelper`):
    ```powershell
-   $SecureString = ConvertTo-SecureString -String "2925431dcf1cc9fb2588cb716d7ed603e39d960a1353514e72dab68405651f5e" -AsPlainText -Force
+   $SecureString = ConvertTo-SecureString -String "<TOKEN>" -AsPlainText -Force
    Set-AzKeyVaultSecret -VaultName openshifthelper -Name "OpenClawGatewayToken" -SecretValue $SecureString
    ```
 
@@ -213,7 +213,7 @@ Key log lines observed:
 | **Image** | `ghcr.io/openclaw/openclaw:latest` |
 | **VM** | `shared-cpu-2x` / 2048 MB RAM |
 | **Volume** | `openclaw_data` (1 GB, encrypted) |
-| **Gateway Token** | `2925431dcf1cc9fb2588cb716d7ed603e39d960a1353514e72dab68405651f5e` |
+| **Gateway Token** | *See Azure Key Vault `openshifthelper` → `OpenClawGatewayToken`* |
 
 ---
 
@@ -233,6 +233,12 @@ Visit `https://openclaw-fly-lhr-20260512.fly.dev` and paste the **Gateway Token*
 > - `http://localhost:3000`
 > - `http://127.0.0.1:3000`
 > - `https://openclaw-fly-lhr-20260512.fly.dev`
+>
+> **If you see "device pairing required"**: OpenClaw treats every new browser as an untrusted device. Approve it via SSH:
+> ```bash
+> flyctl ssh console --app openclaw-fly-lhr-20260512 --command "node dist/index.js devices approve <requestId>"
+> ```
+> Then refresh the browser. See [Troubleshooting](#troubleshooting) for more details.
 
 ### Secret Management (Azure Key Vault)
 
@@ -249,13 +255,13 @@ Because this subscription requires MFA against tenant `de4adc2e-4d6f-4aab-b150-6
 **Azure CLI:**
 ```bash
 az account set --subscription b85b029d-9f7c-4c5a-8939-819480780c5d
-az keyvault secret set --vault-name dp-kv-deliverypilot --name OpenClawGatewayToken --value 2925431dcf1cc9fb2588cb716d7ed603e39d960a1353514e72dab68405651f5e
+az keyvault secret set --vault-name dp-kv-deliverypilot --name OpenClawGatewayToken --value <TOKEN>
 ```
 
 **PowerShell:**
 ```powershell
 Set-AzContext -Subscription b85b029d-9f7c-4c5a-8939-819480780c5d
-$SecureString = ConvertTo-SecureString -String "2925431dcf1cc9fb2588cb716d7ed603e39d960a1353514e72dab68405651f5e" -AsPlainText -Force
+$SecureString = ConvertTo-SecureString -String "<TOKEN>" -AsPlainText -Force
 Set-AzKeyVaultSecret -VaultName dp-kv-deliverypilot -Name "OpenClawGatewayToken" -SecretValue $SecureString
 ```
 
@@ -300,6 +306,8 @@ flyctl rollback <version> --app openclaw-fly-lhr-20260512
 | OOM during build | Not applicable for remote-image deploys. If building locally, ensure 2 GB+ RAM. |
 | Volume permission errors | The image runs as `node` (uid 1000). Fly's init ensures `/data` is mounted with uid 1000. |
 | Slow cold start | Increase VM memory or use a larger CPU class. |
+| **Device pairing required** (`requestId: ...`) | When opening the Control UI from a new browser/device, OpenClaw requires explicit device approval for security. <br><br> **Fix via CLI:** <br> 1. List pending devices: <br> `flyctl ssh console --app openclaw-fly-lhr-20260512 --command "node dist/index.js devices list"` <br> 2. Approve the device: <br> `flyctl ssh console --app openclaw-fly-lhr-20260512 --command "node dist/index.js devices approve <requestId>"` <br> 3. Refresh the browser. <br><br> **Alternative:** Disable device pairing (not recommended for public deployments): <br> `flyctl ssh console --app openclaw-fly-lhr-20260512 --command "node dist/index.js config set gateway.devicePairing.enabled false"` |
+| **Origin not allowed** | The Fly.io public URL is not in `gateway.controlUi.allowedOrigins`. See [Open the Control UI](#open-the-control-ui) section for the fix. |
 
 ---
 
