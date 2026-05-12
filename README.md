@@ -299,6 +299,39 @@ flyctl secrets set OPENAI_API_KEY=sk-... --app openclaw-fly-lhr-20260512
 
 Or configure via the Control UI dashboard.
 
+### Phase 5: Add Telegram Bot 🤖
+
+**Step 1:** Create a bot with [@BotFather](https://t.me/botfather) on Telegram
+- Send `/newbot`
+- Name it (e.g., `fly_open_claw_bot`)
+- Save the API token securely
+
+**Step 2:** Save token to Azure Key Vault
+```powershell
+$SecureString = ConvertTo-SecureString -String "<TOKEN>" -AsPlainText -Force
+Set-AzKeyVaultSecret -VaultName openshifthelper -Name "Telegram-Bot-Token" -SecretValue $SecureString
+```
+
+**Step 3:** Set Fly.io secret
+```bash
+flyctl secrets set TELEGRAM_BOT_TOKEN=<TOKEN> --app openclaw-fly-lhr-20260512
+```
+
+**Step 4:** Verify in logs
+```bash
+flyctl logs --app openclaw-fly-lhr-20260512 --no-tail | findstr telegram
+```
+
+Expected output:
+```
+Telegram configured, enabled automatically.
+[telegram] [default] starting provider (@fly_open_claw_bot)
+```
+
+**Step 5:** Message your bot on Telegram! It will reply via OpenClaw AI.
+
+> 📄 **Full guide:** [TELEGRAM_INTEGRATION.md](TELEGRAM_INTEGRATION.md)
+
 ---
 
 ## 🔍 Diagnosis & Troubleshooting
@@ -414,6 +447,7 @@ flyctl rollback <version> --app openclaw-fly-lhr-20260512
 - [ ] Device pairing approved for your browser
 - [ ] Gateway Token stored securely (Key Vault + Fly secrets)
 - [ ] AI provider API key configured
+- [ ] Telegram bot connected (@fly_open_claw_bot)
 - [ ] No secrets committed to git
 
 **Happy AI assisting!** 🦞✨
