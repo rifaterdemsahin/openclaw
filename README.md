@@ -347,6 +347,7 @@ flowchart TD
 | 💥 `Invalid config at /data/openclaw.json` | Bad config key (e.g., `devicePairing`) | Destroy volume & recreate, or fix JSON |
 | 🔄 `app not listening on expected address` | Gateway still booting | Wait 10s, verify with `curl /healthz` |
 | 🚫 `401/403 Unauthorized` | Missing or wrong `OPENCLAW_GATEWAY_TOKEN` | `flyctl secrets set OPENCLAW_GATEWAY_TOKEN=...` |
+| 🤖 `No API key found for provider "openai"` | Missing OpenAI API key | `flyctl secrets set OPENAI_API_KEY=sk-... --app openclaw-fly-lhr-20260512`. See [OPENAI_API_KEY_FIX.md](OPENAI_API_KEY_FIX.md) |
 
 ### Useful Commands
 
