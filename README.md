@@ -218,16 +218,77 @@ OpenClaw requires explicit device approval for security. When you open the Contr
 
 > **device pairing required (requestId: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)**
 
-**Approve via SSH:**
-```bash
-# Set the correct gateway URL for CLI
-flyctl ssh console --app openclaw-fly-lhr-20260512 --command "sh -c 'export OPENCLAW_GATEWAY_URL=ws://127.0.0.1:3000; node dist/index.js devices list'"
+**The Problem:** The CLI `devices approve` command fails on Fly.io because the CLI connection itself is treated as a new device that also needs pairing (chicken-and-egg problem).
 
-# Approve the specific request
-flyctl ssh console --app openclaw-fly-lhr-20260512 --command "sh -c 'export OPENCLAW_GATEWAY_URL=ws://127.0.0.1:3000; node dist/index.js devices approve <REQUEST_ID>'"
+**The Solution:** Directly manipulate the device pairing database files on the persistent volume.
+
+**Step 1:** Find the pending device
+```bash
+flyctl ssh console --app openclaw-fly-lhr-20260512 --command "cat /data/devices/pending.json"
 ```
 
-Then refresh your browser.
+**Step 2:** Create an approval script (`approve-device.js`):
+```javascript
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+
+const devicesDir = '/data/devices';
+const pendingPath = path.join(devicesDir, 'pending.json');
+const pairedPath = path.join(devicesDir, 'paired.json');
+
+const requestId = 'YOUR_REQUEST_ID_HERE';
+
+const pending = JSON.parse(fs.readFileSync(pendingPath, 'utf8'));
+const paired = JSON.parse(fs.readFileSync(pairedPath, 'utf8'));
+
+if (!pending[requestId]) {
+  console.log('Device not found in pending');
+  process.exit(1);
+}
+
+const device = pending[requestId];
+const now = Date.now();
+
+const pairedEntry = {
+  deviceId: device.deviceId,
+  publicKey: device.publicKey,
+  platform: device.platform,
+  clientId: device.clientId,
+  clientMode: device.clientMode,
+  role: device.role,
+  roles: device.roles,
+  scopes: device.scopes,
+  approvedScopes: device.scopes,
+  tokens: {
+    operator: {
+      token: crypto.randomBytes(32).toString('base64url'),
+      role: 'operator',
+      scopes: device.scopes,
+      createdAtMs: now
+    }
+  },
+  createdAtMs: now,
+  approvedAtMs: now
+};
+
+paired[device.deviceId] = pairedEntry;
+delete pending[requestId];
+
+fs.writeFileSync(pairedPath, JSON.stringify(paired, null, 2));
+fs.writeFileSync(pendingPath, JSON.stringify(pending, null, 2));
+console.log('Approved device ' + requestId);
+```
+
+**Step 3:** Upload and run the script
+```bash
+flyctl ssh sftp put --app openclaw-fly-lhr-20260512 approve-device.js /home/node/approve-device.js
+flyctl ssh console --app openclaw-fly-lhr-20260512 --command "node /home/node/approve-device.js"
+```
+
+**Step 4:** Refresh your browser — the device is now approved!
+
+> 📄 **See full report:** [DEVICE_PAIRING_FIX.md](DEVICE_PAIRING_FIX.md)
 
 ### Phase 4: Add AI Provider
 
@@ -281,7 +342,7 @@ flowchart TD
 | Error | Cause | Fix |
 |-------|-------|-----|
 | ⚠️ `origin not allowed` | Fly.io URL missing from `allowedOrigins` | Run `update-origins.js` script via SSH |
-| 🔒 `device pairing required` | Browser not approved as trusted device | `devices approve <requestId>` via SSH |
+| 🔒 `device pairing required` | Browser not approved as trusted device | Direct database fix: modify `/data/devices/pending.json` and `/data/devices/paired.json` via Node.js script. See [Fix 2: Device Pairing](#-fix-2-device-pairing) above. |
 | ❌ `GatewayTransportError: 1006` | CLI connecting to wrong port | `export OPENCLAW_GATEWAY_URL=ws://127.0.0.1:3000` |
 | 💥 `Invalid config at /data/openclaw.json` | Bad config key (e.g., `devicePairing`) | Destroy volume & recreate, or fix JSON |
 | 🔄 `app not listening on expected address` | Gateway still booting | Wait 10s, verify with `curl /healthz` |
